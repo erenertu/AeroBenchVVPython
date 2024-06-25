@@ -215,6 +215,9 @@ class WaypointAutopilot(Autopilot):
 
         return rv
 
+    def update_waypoints(self, updated_waypoints):
+        self.waypoints = updated_waypoints
+    
     def get_waypoint_data(self, x_f16):
         '''returns current waypoint data tuple based on the current waypoint:
 
