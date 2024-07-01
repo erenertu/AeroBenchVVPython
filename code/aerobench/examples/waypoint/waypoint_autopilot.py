@@ -55,7 +55,7 @@ class WaypointAutopilot(Autopilot):
         llc = LowLevelController(gain_str=gain_str)
 
         Autopilot.__init__(self, 'Waypoint 1', llc=llc)
-
+    
     def log(self, s):
         'print to terminal if stdout is true'
 
