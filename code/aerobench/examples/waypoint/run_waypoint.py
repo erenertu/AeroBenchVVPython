@@ -135,8 +135,8 @@ async def main():
 
     
     def init():
-        ax.set_xlim(-10000, 10000)
-        ax.set_ylim(-10000, 10000)
+        ax.set_xlim(-100000, 100000)
+        ax.set_ylim(-100000, 100000)
         ax.set_ylabel('North / South Position (ft)')
         ax.set_xlabel('East / West Position (ft)')
         ax.set_title('Overhead Plot')
@@ -191,8 +191,8 @@ async def main():
         waypoint_line.set_data(waypoint_xs, waypoint_ys)
 
         # Center the plot around the current position
-        ax.set_xlim(states[-1][StateIndex.POSE] - 1000, states[-1][StateIndex.POSE] + 1000)
-        ax.set_ylim(states[-1][StateIndex.POSN] - 1000, states[-1][StateIndex.POSN] + 1000)
+        #ax.set_xlim(states[-1][StateIndex.POSE], states[-1][StateIndex.POSE])
+        #ax.set_ylim(states[-1][StateIndex.POSN], states[-1][StateIndex.POSN] + 1000)
 
         velocity_text.set_text(f'Velocity: {states[-1][StateIndex.VT]:.2f} ft/s')
         psi_text.set_text(f'Psi: {states[-1][StateIndex.PSI]:.2f} rad')
