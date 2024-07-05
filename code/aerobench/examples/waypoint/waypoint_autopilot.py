@@ -30,7 +30,7 @@ class WaypointAutopilot(Autopilot):
         # control config
         # Gains for speed control
         self.cfg_k_vt = 0.25
-        self.cfg_airspeed = 550
+        self.cfg_airspeed = 200
 
         # Gains for altitude tracking
         self.cfg_k_alt = 0.005
@@ -39,6 +39,7 @@ class WaypointAutopilot(Autopilot):
         # Gains for heading tracking
         self.cfg_k_prop_psi = 5
         self.cfg_k_der_psi = 0.5
+        self.desired_heading = 0 # Initial desired heading
 
         # Gains for roll tracking
         self.cfg_k_prop_phi = 0.75
@@ -66,7 +67,7 @@ class WaypointAutopilot(Autopilot):
         '''get the reference input signals'''
 
         if self.mode != "Done":
-            psi_cmd = self.get_waypoint_data(x_f16)[0]
+            psi_cmd = self.desired_heading
 
             # Get desired roll angle given desired heading
             phi_cmd = self.get_phi_to_track_heading(x_f16, psi_cmd)
@@ -217,6 +218,12 @@ class WaypointAutopilot(Autopilot):
 
     def update_waypoints(self, updated_waypoints):
         self.waypoints = updated_waypoints
+
+    def get_waypoint_data_pid(self, des_heading, des_velocity):
+        'Return desired heading and set desired velocity to the config velocity'
+
+        self.cfg_airspeed = des_velocity
+        self.desired_heading = des_heading
     
     def get_waypoint_data(self, x_f16):
         '''returns current waypoint data tuple based on the current waypoint:
