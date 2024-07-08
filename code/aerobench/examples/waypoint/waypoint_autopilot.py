@@ -30,7 +30,7 @@ class WaypointAutopilot(Autopilot):
         # control config
         # Gains for speed control
         self.cfg_k_vt = 0.25
-        self.cfg_airspeed = 550
+        self.cfg_airspeed = 550.0
 
         # Gains for altitude tracking
         self.cfg_k_alt = 0.005
@@ -222,7 +222,7 @@ class WaypointAutopilot(Autopilot):
     def get_waypoint_data_pid(self, des_heading, des_velocity):
         'Return desired heading and set desired velocity to the config velocity'
 
-        self.cfg_airspeed = des_velocity
+        self.cfg_airspeed = float(des_velocity)
         self.desired_heading = float(des_heading)
     
     def get_waypoint_data(self, x_f16):

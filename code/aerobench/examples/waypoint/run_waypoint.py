@@ -74,10 +74,11 @@ def formation_navigator(states_F, states_L, initial_state_F, initial_state_L, cl
 
     # PID algorithm there
     pid_heading = PID(10, 0, 0, setpoint=0)
-    delta_heading = pid_heading(clearances_err[1])
-    delta_velo = 300
+    delta_heading = 0
+    pid_velo = PID(1, 0, 0, setpoint=0)
+    delta_velo = pid_velo(clearances_err[0])
 
-    return delta_heading, delta_velo, clearances_err[1], pid_heading
+    return delta_heading, delta_velo, clearances_err[1], pid_heading, clearances_err[0], pid_velo
 
 
 ### Initial Conditions ###
@@ -89,25 +90,25 @@ beta = 0  # Side slip angle (rad)
 
 # Initial Attitude
 alt = 3800  # altitude (ft)
-vt = 300  # initial velocity (ft/sec)
+vt = 200  # initial velocity (ft/sec)
 phi = 0  # Roll angle from wings level (rad)
 theta = 0  # Pitch angle from nose level (rad)
 psi = 0  # Yaw angle from North (rad)
 
 
 # Formation clearances according to the formation type
-clearances = [200, 150]  # North and east clearances respectively
+clearances = [0, 150]  # east and north clearances respectively
 
 # Define simulation parameters
-tmax = 100  # simulation time
+tmax = 50  # simulation time
 tmax_integrator = 4000
 step = 1 / 30  # step time
 runtime = 0
 
 waypoints = []
 # Initial leader position
-leader_position = [[5000, 5000, alt]]  # east, north and altitude
-target_position = [[leader_position[0][1] + clearances[1], leader_position[0][0] + clearances[0], alt]]
+leader_position = [[0, 10000, alt]]  # east, north and altitude
+target_position = [[leader_position[0][0] + clearances[0], leader_position[0][1] + clearances[1], alt]]
 waypoints.append(copy.deepcopy(target_position))
 
 ap = WaypointAutopilot(target_position, stdout=True)
@@ -115,7 +116,7 @@ ap = WaypointAutopilot(target_position, stdout=True)
 # Build Initial Condition Vectors
 # state = [vt, alpha, beta, phi, theta, psi, P, Q, R, pn, pe, h, pow]
 initial_state_f = [vt, alpha, beta, phi, theta, psi, 0, 0, 0, 0, 0, alt, power]
-initial_state_l = [0, 0, 0, 0, 0, 0, 0, 0, 0, leader_position[0][0], leader_position[0][1], alt, 0]
+initial_state_l = [0, 0, 0, 0, 0, 0, 0, 0, 0, leader_position[0][1], leader_position[0][0], alt, 0]
 
 start = time.perf_counter()
 
@@ -157,9 +158,12 @@ integrator = integrator_class(der_func, times[-1], states[-1], tmax_integrator, 
 
 # Initialize lists for PID data
 pid_times = []
-setpoints = []
-errors = []
+heading_setpoints = []
+velo_setpoints = []
+lateral_errors = []
+forward_errors = []
 des_head_array = []
+des_velo_array = []
 
 # Simulation part
 while runtime < tmax:
@@ -176,18 +180,19 @@ while runtime < tmax:
     states.append(dense_output(t))
     
     # Update of leader aircraft and target positin
-    leader_position[0][0] += 0 * step
-    leader_position[0][1] += 0 * step
-    states_leader = [0, 0, 0, 0, 0, 0, 0, 0, 0, leader_position[0][0], leader_position[0][1], alt, 0]
+    leader_position[0][0] += 0 * step  # east   
+    leader_position[0][1] += 0 * step  # north
+    states_leader = [0, 0, 0, 0, 0, 0, 0, 0, 0, leader_position[0][1], leader_position[0][0], alt, 0]
 
-    target_position = [[leader_position[0][1] + clearances[1], leader_position[0][0] + clearances[0], alt]]
+    target_position = [[leader_position[0][0] + clearances[0], leader_position[0][1] + clearances[1], alt]]  # east, north and altitude
     ap.update_waypoints(target_position)
     waypoints.append(copy.deepcopy(target_position))
 
-    # Formation navigator part
-    delta_heading, delta_velo, lateral_error, pid_heading = formation_navigator(states[-1], states_leader, initial_state_f, initial_state_l, clearances)
+    # Formation navigator and setting to the autopilot
+    delta_heading, delta_velo, lateral_error, pid_heading, forward_error, pid_velo = formation_navigator(states[-1], states_leader, initial_state_f, initial_state_l, clearances)
     des_head = states[-1][5] + delta_heading
-    ap.get_waypoint_data_pid(des_head, delta_velo)
+    des_velo = initial_state_f[0] + delta_velo
+    ap.get_waypoint_data_pid(des_head, des_velo)
     
     updated = ap.advance_discrete_mode(times[-1], states[-1])
     modes.append(ap.mode)
@@ -204,10 +209,13 @@ while runtime < tmax:
     #############################################
     # Store PID data
     pid_times.append(t)
-    setpoints.append(pid_heading.setpoint)
-    errors.append(lateral_error)
+    heading_setpoints.append(pid_heading.setpoint)
+    velo_setpoints.append(pid_velo.setpoint)
+    lateral_errors.append(lateral_error)
+    forward_errors.append(forward_error)
     #
     des_head_array.append(des_head)
+    des_velo_array.append(des_velo)
     ############################################
 
     runtime += step
@@ -217,19 +225,27 @@ while runtime < tmax:
 
 north = [state[9] for state in states]
 east = [state[10] for state in states]
+vt = [state[0] for state in states]
 # Plot PID data
 fig = plt.figure()
 ax1 = fig.add_subplot(311)
-ax1.plot(pid_times, des_head_array, label='Desired Heading')
+ax1.plot(pid_times, des_velo_array, label='Desired Velocity')
+ax1.plot(times, vt, label='Total Velocity')
+ax1.set_xlabel('Time (s)')
+ax1.set_ylabel('Desired Velocity (ft/s)')
+ax1.legend()
 ax2 = fig.add_subplot(312)
-ax2.plot(pid_times, setpoints, label='Setpoint', color='green')
-ax2.plot(pid_times, errors, label='Lateral Error', color='red')
+ax2.plot(pid_times, velo_setpoints, label='Setpoint', color='green')
+ax2.plot(pid_times, forward_errors, label='Forward Error', color='red')
 ax2.set_title('PID Controller')
 ax2.set_xlabel('Time (s)')
 ax2.set_ylabel('Values')
 ax2.legend()
 ax3 = fig.add_subplot(313)
-ax3.plot(north, east, label='North/East')
+ax3.plot(north, east, label='Follower Aircraft')
 ax3.plot(target_position[0][1], target_position[0][0], marker='x', color='red', label='Target Point')
+ax3.set_xlabel('North (ft)')
+ax3.set_ylabel('East (east)')
+ax3.legend()
 plt.tight_layout()
 plt.show()
