@@ -34,7 +34,7 @@ class LowLevelController(Freezable):
 
     old_xequil = np.array([502.0, 0.0389, 0.0, 0.0, 0.0389, 0.0, 0.0, 0.0, \
                         0.0, 0.0, 0.0, 1000.0, 9.0567], dtype=float).transpose()
-    old_uequil = np.array([0.1395, -0.7496, 0.0, 0.0], dtype=float).transpose()
+    old_uequil = np.array([0.0395, -0.4496, 0.0, 0.0], dtype=float).transpose()
 
     def __init__(self, gain_str='old'):
         # Hard coded LQR gain matrix from matlab version

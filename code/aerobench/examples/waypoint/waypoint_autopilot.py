@@ -20,17 +20,18 @@ class WaypointAutopilot(Autopilot):
         self.stdout = stdout
         self.waypoints = waypoints
         self.waypoint_index = 0
+        self.mode_reach_ctrl = 0
 
         # waypoint config
         self.cfg_slant_range_threshold = 250
 
         # default control when not waypoint tracking
-        self.cfg_u_ol_default = (0, 0, 0, 0.3)
+        self.cfg_u_ol_default = (0, 0, 0, 0)
 
         # control config
         # Gains for speed control
         self.cfg_k_vt = 0.25
-        self.cfg_airspeed = 550
+        self.cfg_airspeed = 250.0
 
         # Gains for altitude tracking
         self.cfg_k_alt = 0.005
@@ -39,6 +40,7 @@ class WaypointAutopilot(Autopilot):
         # Gains for heading tracking
         self.cfg_k_prop_psi = 5
         self.cfg_k_der_psi = 0.5
+        self.desired_heading = 0.0 # Initial desired heading
 
         # Gains for roll tracking
         self.cfg_k_prop_phi = 0.75
@@ -55,7 +57,7 @@ class WaypointAutopilot(Autopilot):
         llc = LowLevelController(gain_str=gain_str)
 
         Autopilot.__init__(self, 'Waypoint 1', llc=llc)
-
+    
     def log(self, s):
         'print to terminal if stdout is true'
 
@@ -66,7 +68,7 @@ class WaypointAutopilot(Autopilot):
         '''get the reference input signals'''
 
         if self.mode != "Done":
-            psi_cmd = self.get_waypoint_data(x_f16)[0]
+            psi_cmd = self.desired_heading
 
             # Get desired roll angle given desired heading
             phi_cmd = self.get_phi_to_track_heading(x_f16, psi_cmd)
@@ -77,7 +79,11 @@ class WaypointAutopilot(Autopilot):
         else:
            # Waypoint Following complete: fly level.
             throttle = self.track_airspeed(x_f16)
-            ps_cmd = self.track_roll_angle(x_f16, 0)
+            # Get desired roll angle given desired heading
+            psi_cmd = self.desired_heading
+            phi_cmd = self.get_phi_to_track_heading(x_f16, psi_cmd)
+            ps_cmd = self.track_roll_angle(x_f16, phi_cmd)
+
             nz_cmd = self.track_altitude_wings_level(x_f16)
 
         # trim to limits
@@ -192,7 +198,7 @@ class WaypointAutopilot(Autopilot):
         has changed.
         '''
 
-        if self.waypoint_index < len(self.waypoints):
+        '''if self.waypoint_index < len(self.waypoints):
             slant_range = self.get_waypoint_data(x_f16)[-1]
 
             if slant_range < self.cfg_slant_range_threshold:
@@ -211,10 +217,21 @@ class WaypointAutopilot(Autopilot):
         rv = premode != self.mode
 
         if rv:
-            self.log(f"Waypoint transition {premode} -> {self.mode} at time {t}")
+            self.log(f"Waypoint transition {premode} -> {self.mode} at time {t}")'''
+
+        rv = False
 
         return rv
 
+    def update_waypoints(self, updated_waypoints):
+        self.waypoints = updated_waypoints
+
+    def get_waypoint_data_pid(self, des_heading, des_velocity):
+        'Return desired heading and set desired velocity to the config velocity'
+
+        self.cfg_airspeed = float(des_velocity)
+        self.desired_heading = float(des_heading)
+    
     def get_waypoint_data(self, x_f16):
         '''returns current waypoint data tuple based on the current waypoint:
 
