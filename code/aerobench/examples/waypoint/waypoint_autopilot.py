@@ -20,17 +20,18 @@ class WaypointAutopilot(Autopilot):
         self.stdout = stdout
         self.waypoints = waypoints
         self.waypoint_index = 0
+        self.mode_reach_ctrl = 0
 
         # waypoint config
         self.cfg_slant_range_threshold = 250
 
         # default control when not waypoint tracking
-        self.cfg_u_ol_default = (0, 0, 0, 0.3)
+        self.cfg_u_ol_default = (0, 0, 0, 0)
 
         # control config
         # Gains for speed control
         self.cfg_k_vt = 0.25
-        self.cfg_airspeed = 550.0
+        self.cfg_airspeed = 250.0
 
         # Gains for altitude tracking
         self.cfg_k_alt = 0.005
@@ -78,7 +79,11 @@ class WaypointAutopilot(Autopilot):
         else:
            # Waypoint Following complete: fly level.
             throttle = self.track_airspeed(x_f16)
-            ps_cmd = self.track_roll_angle(x_f16, 0)
+            # Get desired roll angle given desired heading
+            psi_cmd = self.desired_heading
+            phi_cmd = self.get_phi_to_track_heading(x_f16, psi_cmd)
+            ps_cmd = self.track_roll_angle(x_f16, phi_cmd)
+
             nz_cmd = self.track_altitude_wings_level(x_f16)
 
         # trim to limits
@@ -193,7 +198,7 @@ class WaypointAutopilot(Autopilot):
         has changed.
         '''
 
-        if self.waypoint_index < len(self.waypoints):
+        '''if self.waypoint_index < len(self.waypoints):
             slant_range = self.get_waypoint_data(x_f16)[-1]
 
             if slant_range < self.cfg_slant_range_threshold:
@@ -212,7 +217,9 @@ class WaypointAutopilot(Autopilot):
         rv = premode != self.mode
 
         if rv:
-            self.log(f"Waypoint transition {premode} -> {self.mode} at time {t}")
+            self.log(f"Waypoint transition {premode} -> {self.mode} at time {t}")'''
+
+        rv = False
 
         return rv
 
