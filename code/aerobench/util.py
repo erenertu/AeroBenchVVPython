@@ -53,9 +53,9 @@ class Euler(Freezable):
     loosely based on scipy.integrate.RK45
     '''
 
-    def __init__(self, der_func, tstart, ystart, tend, step=0, time_tol=1e-9):
+    def __init__(self, der_func, tstart, ystart, step=0, time_tol=1e-9):
         assert step > 0, "arg step > 0 required in Euler integrator"
-        assert tend > tstart
+        #assert tend > tstart
 
         self.der_func = der_func # signature (t, x)
         self.tstep = step
@@ -63,7 +63,7 @@ class Euler(Freezable):
         self.y = ystart.copy()
         self.yprev = None
         self.tprev = None
-        self.tend = tend
+        self.tend = self.tstep * 5
 
         self.status = 'running'
 
@@ -80,6 +80,7 @@ class Euler(Freezable):
             yd = self.der_func(self.t, self.y)
 
             self.t += self.tstep
+            self.tend = self.t + self.tstep * 5
 
             if self.t + self.time_tol >= self.tend:
                 self.t = self.tend

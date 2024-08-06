@@ -23,7 +23,7 @@ from aerobench.highlevel.controlled_f16 import controlled_f16
 from aerobench.util import get_state_names, Euler, StateIndex
 
 model_str = 'morelli'
-integrator_str = 'rk45'
+integrator_str = 'euler'
 v2_integrators = False
 
 
@@ -105,7 +105,7 @@ clearances = [0, 150]  # east and north clearances respectively
 # Define simulation parameters
 step = 1 / 30  # step time
 tmax = (10) * (1/step)  # simulation time
-tmax_integrator = 4000
+tmax_integrator = 0
 runtime = 0
 
 waypoints = []
@@ -164,7 +164,7 @@ else:
     kwargs = {'step': step}
 
 # note: fixed_step argument is unused by rk45, used with euler
-integrator = integrator_class(der_func, times[-1], states[-1], tmax_integrator, **kwargs)
+integrator = integrator_class(der_func, times[-1], states[-1], **kwargs)
 
 # Initialize lists for PID data
 pid_times = []
@@ -183,11 +183,7 @@ v_north_leader = v_north_init_leader
 while runtime < tmax:
     loop_start_time = time.perf_counter()
     # FDM update and states of the follower
-    if integrator.status == 'running':
-        while integrator.t < times[-1] + step:
-            integrator.step()
-    else:
-        print(f"Integrator status changed at: {runtime} seconds. Status: {integrator.status}")
+    integrator.step()
     dense_output = integrator.dense_output()
     t = times[-1] + step
     times.append(t)

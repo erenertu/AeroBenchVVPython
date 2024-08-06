@@ -24,7 +24,7 @@ def controlled_f16(t, x_f16, u_ref, llc, f16_model='morelli', v2_integrators=Fal
     x_ctrl, u_deg = llc.get_u_deg(u_ref, x_f16)
 
     # Note: Control vector (u) for subF16 is in units of degrees
-    xd_model, Nz, Ny, _, _ = subf16_model(x_f16[0:13], u_deg, f16_model)
+    xd_model, Nz, Ny, _, _ = subf16_model(x_f16[0:13], u_deg, f16_model)  # We can give u_deg reference values from there for manual control
 
     if v2_integrators:
         # integrators from matlab v2 model
