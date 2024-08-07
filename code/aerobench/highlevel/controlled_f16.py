@@ -1,7 +1,6 @@
 '''
-Stanley Bak
-Python Version of F-16 GCAS
-ODE derivative code (controlled F16)
+Python Version of F-16
+ODE derivative code
 '''
 
 from math import sin, cos
@@ -10,17 +9,15 @@ import numpy as np
 from numpy import deg2rad
 
 from aerobench.lowlevel.subf16_model import subf16_model
-from aerobench.lowlevel.low_level_controller import LowLevelController
 
 def controlled_f16(x_f16, u_deg, f16_model='morelli', v2_integrators=False):
-    'returns the LQR-controlled F-16 state derivatives and more'
 
     assert isinstance(x_f16, np.ndarray)
 
     assert f16_model in ['stevens', 'morelli'], 'Unknown F16_model: {}'.format(f16_model)
 
     # Note: Control vector (u) for subF16 is in units of degrees
-    xd_model, Nz, Ny, _, _ = subf16_model(x_f16[0:13], u_deg, f16_model)  # We can give u_deg reference values from there for manual control
+    xd_model, Nz, Ny, _, _ = subf16_model(x_f16[0:13], u_deg, f16_model) 
 
     if v2_integrators:
         # integrators from matlab v2 model

@@ -3,12 +3,14 @@ import time
 import numpy as np
 from numpy import deg2rad
 import matplotlib.pyplot as plt
-import matplotlib.animation as animation
+from mpl_toolkits.mplot3d import Axes3D, art3d
+import pygame
 import asyncio
 
 import sys
 import os
 import copy
+from scipy.io import loadmat
 from simple_pid import PID
 
 # Add the aerobench directory to the Python path
@@ -27,11 +29,13 @@ integrator_str = 'euler'
 v2_integrators = True
 
 
-def make_der_func(model_str, v2_integrators, u_deg):
+def make_der_func(model_str, v2_integrators):
     'make the combined derivative function for integration'
 
     def der_func(t, full_state):
         'derivative function, generalized for multiple aircraft'
+        # Get joystick inputs
+        u_deg = get_joystick_inputs()
 
         xd = controlled_f16(full_state, u_deg, model_str, v2_integrators)[0]
         rv = xd
@@ -39,6 +43,23 @@ def make_der_func(model_str, v2_integrators, u_deg):
         return rv
 
     return der_func
+
+def get_joystick_inputs():
+    pygame.event.pump()  # Process event queue
+
+    # Get joystick axes (example for 4 axes)
+    axis_0 = joystick.get_axis(0) * 21.5  # Aileron (roll)
+    axis_1 = joystick.get_axis(1) * 25  # Elevator (pitch)
+    axis_2 = joystick.get_axis(3)  # Throttle
+    axis_3 = joystick.get_axis(2) * 30  # Rudder (yaw)
+
+    # Map joystick axes to control inputs
+    aileron = -axis_0
+    elevator = -axis_1
+    throttle = (1 - axis_2) / 2  # Map from [-1, 1] to [0, 1]
+    rudder = -axis_3
+
+    return [throttle, elevator, aileron, rudder]
 
 
 ### Initial Conditions ###
@@ -75,9 +96,8 @@ x0 = initial_state_f
 # run the numerical simulation
 times = [0]
 states = [x0]
-controls = [[1, 0, 0, 0]]
 
-der_func = make_der_func(model_str, v2_integrators, controls[-1])
+der_func = make_der_func(model_str, v2_integrators)
 
 if integrator_str == 'rk45':
     integrator_class = RK45
@@ -90,52 +110,122 @@ else:
 # note: fixed_step argument is unused by rk45, used with euler
 integrator = integrator_class(der_func, times[-1], states[-1], **kwargs)
 
+# Initialize pygame and the joystick
+pygame.init()
+pygame.joystick.init()
+
+# Assuming there is at least one joystick connected
+joystick = pygame.joystick.Joystick(0)
+joystick.init()
+
+print(f"Initialized Joystick: {joystick.get_name()}")
+
+
+# Printing Part
+# Initialize matplotlib for real-time 3D plotting
+x, y, z = 0, 0, alt  # initial positions
+plt.ion()
+fig = plt.figure()
+ax = fig.add_subplot(111, projection='3d')
+point, = ax.plot([x], [y], [z], 'bo')  # 'bo' stands for blue circle
+ax.set_xlim(-1000, 1000)
+ax.set_ylim(-1000, 1000)
+ax.set_zlim(0, 2000)
+ax.invert_yaxis()
+ax.set_xlabel('North Position (ft)')
+ax.set_ylabel('East Position (ft)')
+ax.set_zlabel('Altitude (ft)')
+ax.set_title('Real-Time 3D Flight Dynamics Simulation')
+
+# Create lines for the x, y, and z axes
+line_x, = ax.plot([], [], [], 'r--', label='x-axis')
+line_y, = ax.plot([], [], [], 'g--', label='y-axis')
+line_z, = ax.plot([], [], [], 'b--', label='z-axis')
+
+
+# Annotations for forces and velocity
+text_phi = ax.text2D(0.05, 0.90, '', transform=ax.transAxes)
+text_theta = ax.text2D(0.05, 0.85, '', transform=ax.transAxes)
+text_psi = ax.text2D(0.05, 0.80, '', transform=ax.transAxes)
+text_velocity = ax.text2D(0.05, 0.75, '', transform=ax.transAxes)
+def update_orientation_lines(ax, state, scale=200):
+    phi = state[StateIndex.PHI]
+    theta = state[StateIndex.THETA]
+    psi = state[StateIndex.PSI]
+
+    # Rotation matrix
+    cos_phi, sin_phi = math.cos(phi), math.sin(phi)
+    cos_theta, sin_theta = math.cos(theta), math.sin(theta)
+    cos_psi, sin_psi = math.cos(psi), math.sin(psi)
+
+    R = np.array([
+        [cos_theta * cos_psi, cos_theta * sin_psi, -sin_theta],
+        [sin_phi * sin_theta * cos_psi - cos_phi * sin_psi, sin_phi * sin_theta * sin_psi + cos_phi * cos_psi, sin_phi * cos_theta],
+        [cos_phi * sin_theta * cos_psi + sin_phi * sin_psi, cos_phi * sin_theta * sin_psi - sin_phi * cos_psi, cos_phi * cos_theta]
+    ])
+
+    origin = np.array([state[9], state[10], state[11]])
+
+    # Define the unit vectors for the aircraft's local axes
+    x_axis = np.array([scale, 0, 0])
+    y_axis = np.array([0, scale, 0])
+    z_axis = np.array([0, 0, scale])
+
+    # Rotate the unit vectors
+    x_axis_rot = R @ x_axis
+    y_axis_rot = R @ y_axis
+    z_axis_rot = R @ z_axis
+
+    # Update the lines
+    line_x.set_data([origin[0], origin[0] + x_axis_rot[0]], [origin[1], origin[1] + x_axis_rot[1]])
+    line_x.set_3d_properties([origin[2], origin[2] + x_axis_rot[2]])
+
+    line_y.set_data([origin[0], origin[0] + y_axis_rot[0]], [origin[1], origin[1] + y_axis_rot[1]])
+    line_y.set_3d_properties([origin[2], origin[2] + y_axis_rot[2]])
+
+    line_z.set_data([origin[0], origin[0] + z_axis_rot[0]], [origin[1], origin[1] + z_axis_rot[1]])
+    line_z.set_3d_properties([origin[2], origin[2] + z_axis_rot[2]])
+
 # Simulation part
-while runtime < tmax:
-    loop_start_time = time.perf_counter()
+while True:
+    loop_start_time = time.time()
+
     # FDM update and states of the follower
     integrator.step()
     dense_output = integrator.dense_output()
     t = times[-1] + step
     times.append(t)
     states.append(dense_output(t))
-    joystick_inputs = [0.8, 0, 0, 0]
-    controls.append(joystick_inputs)
-    #print(f"Time: {t * step}, Mode: {ap.mode}, Status: {integrator.status}")
-    print('alt: ', states[-1][11])
 
-    runtime += step
-    fps_recorder = time.perf_counter() - loop_start_time
-    #print('FPS:', fps_recorder * 0.001)
+    # Update plot
+    point.set_data([states[-1][9]], [states[-1][10]])
+    point.set_3d_properties([states[-1][11]])
+    ax.set_xlim(states[-1][9] - 1000, states[-1][9] + 1000)  # Center the plot around the current x position
+    ax.set_ylim(states[-1][10] - 1000, states[-1][10] + 1000)  # Center the plot around the current y position
+    ax.set_zlim(states[-1][11] - 1000, states[-1][11] + 1000)
+    ax.invert_yaxis()
+
+    # Update orientation lines
+    update_orientation_lines(ax, states[-1])
+
+    # Update annotations
+    text_phi.set_text(f'Phi: {math.degrees(states[-1][3]):.2f} deg')
+    text_theta.set_text(f'Theta: {math.degrees(states[-1][4]):.2f} deg')
+    text_psi.set_text(f'Psi: {math.degrees(states[-1][5]):.2f} deg')
+    text_velocity.set_text(f'Velocity: {states[-1][0]:.2f} ft/s')
+
+    fig.canvas.draw()
+    fig.canvas.flush_events()
+
     # Synchronize with real time
+    elapsed_time = time.time() - loop_start_time
+    print('Compute Time: ', elapsed_time * 1000)
+    sleep_time = max(0, step - elapsed_time)
+    time.sleep(sleep_time)
 
-north = [state[9] for state in states]
-east = [state[10] for state in states]
-altitude = [state[11] for state in states]
-vt = [state[0] for state in states]
-heading = [state[5] for state in states]
+# Quit pygame
+pygame.quit()
 
-# Plot PID data
-fig = plt.figure()
-ax1 = fig.add_subplot(311)
-##### Part for heading
-ax1.plot(times, heading, label='Heading')
-##### Part for velo
-ax1.plot(times, vt, label='Velocity')
-ax1.set_xlabel('Time (s)')
-ax1.legend()
-ax2 = fig.add_subplot(312)
-ax2.plot(times, altitude, label='Altitude', color='green')
-##### Part for velo PID
-ax2.set_title('Altitude - Time')
-ax2.set_xlabel('Time (s)')
-ax2.set_ylabel('Values')
-ax2.legend()
-ax3 = fig.add_subplot(313)
-ax3.plot(times, east, marker='x', color='red', label='East', alpha=0.1)
-ax3.plot(times, north, label='North')
-ax3.set_xlabel('Time (s)')
-ax3.set_ylabel('East / North')
-ax3.legend()
-plt.tight_layout()
+# Keep the plot open after the simulation ends
+plt.ioff()
 plt.show()
