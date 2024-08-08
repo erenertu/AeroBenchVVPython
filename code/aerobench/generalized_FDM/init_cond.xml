@@ -1,0 +1,10 @@
+<init_cond>
+    <power>5</power> <!-- Engine power level (0-10) -->
+    <alpha>0</alpha> <!-- Trim Angle of Attack (rad) -->
+    <beta>0</beta> <!-- Side slip angle (rad) -->
+    <altitude>1500</altitude> <!-- Altitude (ft) -->
+    <velocity>400</velocity> <!-- Initial velocity (ft/sec) -->
+    <phi>0</phi> <!-- Roll angle from wings level (rad) -->
+    <theta>0</theta> <!-- Pitch angle from nose level (rad) -->
+    <psi>0</psi> <!-- Yaw angle from North (rad) -->
+</init_cond>

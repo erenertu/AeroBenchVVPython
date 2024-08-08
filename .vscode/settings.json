@@ -1,0 +1,6 @@
+{
+    "python.analysis.extraPaths": [
+        "./code/aerobench/generalized_FDM/controller",
+        "./code/aerobench/generalized_FDM"
+    ]
+}

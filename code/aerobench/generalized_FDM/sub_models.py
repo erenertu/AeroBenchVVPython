@@ -27,24 +27,13 @@ outputs aircraft state vector deriative
 from math import sin, cos, pi
 
 from atmosphere.adc import adc
-from aerobench.lowlevel.tgear import tgear
-from aerobench.lowlevel.pdot import pdot
-from aerobench.lowlevel.thrust import thrust
-from aerobench.lowlevel.cx import cx
-from aerobench.lowlevel.cy import cy
-from aerobench.lowlevel.cz import cz
-from aerobench.lowlevel.cl import cl
-from aerobench.lowlevel.dlda import dlda
-from aerobench.lowlevel.dldr import dldr
-from aerobench.lowlevel.cm import cm
-from aerobench.lowlevel.cn import cn
-from aerobench.lowlevel.dnda import dnda
-from aerobench.lowlevel.dndr import dndr
-from aerobench.lowlevel.dampp import dampp
+from mass_inertia.mass_inertia import mass_inertia
+from engine.thrust import thrust
+from engine.tgear import tgear
+from engine.pdot import pdot
+from aero.aero import aero
 
-from aerobench.lowlevel.morellif16 import Morellif16
-
-def subf16_model(x, u, model, adjust_cy=True):
+def sub_models(x, u, model, adjust_cy=True):
     '''output aircraft state vector derivative for a given input
 
     The reference for the model is Appendix A of Stevens & Lewis
@@ -58,25 +47,28 @@ def subf16_model(x, u, model, adjust_cy=True):
     thtlc, el, ail, rdr = u
 
     # Specific to the aircraft
-    xcg = 0.35  # CG position in the X direction
-    s = 300     # Total wing area
-    b = 30      # Wing span
-    cbar = 11.32  # Wing chord
-    rm = 1.57e-3
-    xcgr = .35
-    he = 160.0
-    c1 = -.770
-    c2 = .02755
-    c3 = 1.055e-4
-    c4 = 1.642e-6
-    c5 = .9604
-    c6 = 1.759e-2
-    c7 = 1.792e-5
-    c8 = -.7336
-    c9 = 1.587e-5
+    geom = mass_inertia(model)
+    xcg = geom['xcg']  # CG position in the X direction, current
+    s = geom['s']     # Total wing area
+    b = geom['b']      # Wing span
+    cbar = geom['cbar']  # Wing chord
+    rm = geom['rm']  # 1/mass
+    xcgr = geom['xcgr'] # CG position in the X direction, reference
+    he = geom['he']  # could represent a moment-related constant, such as an aerodynamic hinge moment
+    # These are related to the moment of inertia values
+    c1 = geom['c1']
+    c2 = geom['c2']
+    c3 = geom['c3']
+    c4 = geom['c4']
+    c5 = geom['c5']
+    c6 =  geom['c6']
+    c7 =  geom['c7']
+    c8 =  geom['c8']
+    c9 =  geom['c9']
 
+    # Constants
     rtod = 57.29578  # rad to degree
-    g = 32.17    # gravitational constant
+    g = 32.17    # gravitational constant (ft/s²)
 
     xd = x.copy()
     vt = x[0]
@@ -91,40 +83,24 @@ def subf16_model(x, u, model, adjust_cy=True):
     alt = x[11]
     power = x[12]
 
-    # air data computer and engine model
+    # ----- Air data computer ----- #
     amach, qbar = adc(vt, alt)
-    cpow = tgear(thtlc)
 
-    xd[12] = pdot(power, cpow)
+    # ----- Engine model ----- #
+    cpow = tgear(thtlc, model)
+    xd[12] = pdot(power, cpow, model)
+    t = thrust(power, alt, amach, model)
 
-    t = thrust(power, alt, amach)
-    dail = ail/20
-    drdr = rdr/30
-
-    # component build up
-
-    if model == 'stevens_f16':
-        # stevens & lewis (look up table version)
-        cxt = cx(alpha, el)
-        cyt = cy(beta, ail, rdr)
-        czt = cz(alpha, beta, el)
-
-        clt = cl(alpha, beta) + dlda(alpha, beta) * dail + dldr(alpha, beta) * drdr
-        cmt = cm(alpha, el)
-        cnt = cn(alpha, beta) + dnda(alpha, beta) * dail + dndr(alpha, beta) * drdr
-    else:
-        # morelli model (polynomial version)
-        cxt, cyt, czt, clt, cmt, cnt = Morellif16(alpha*pi/180, beta*pi/180, el*pi/180, ail*pi/180, rdr*pi/180, \
-                                                  p, q, r, cbar, b, vt, xcg, xcgr)
-
+    # ----- Aero model and damping matrix ----- #
+    cxt, cyt, czt, clt, cmt, cnt, d = aero(model, x, u, geom)
+    
     # add damping derivatives
-
     tvt = .5 / vt
     b2v = b * tvt
     cq = cbar * q * tvt
-
+    
+    # ----- Flight Dynamics Equations ----- #
     # get ready for state equations
-    d = dampp(alpha)
     cxt = cxt + cq * d[0]
     cyt = cyt + b2v * (d[1] * r + d[2] * p)
     czt = czt + cq * d[3]
@@ -151,7 +127,7 @@ def subf16_model(x, u, model, adjust_cy=True):
 
     # force equations
     udot = r * v-q * w-g * sth + rm * (qs * cxt + t)
-    vdot = p * w-r * u + gcth * sph + ay
+    vdot = p*w - r*u + gcth*sph + ay
     wdot = q * u-p * v + gcth * cph + az
     dum = (u * u + w * w)
 
@@ -167,7 +143,7 @@ def subf16_model(x, u, model, adjust_cy=True):
     # moments
     xd[6] = (c2 * p + c1 * r + c4 * he) * q + qsb * (c3 * clt + c4 * cnt)
 
-    xd[7] = (c5 * p-c7 * he) * r + c6 * (r * r-p * p) + qs * cbar * c7 * cmt
+    xd[7] = (c5 * p-c7 * he) * r + c6 * (r*r - p*p) + qs * cbar * c7 * cmt
     xd[8] = (c8 * p-c2 * r + c9 * he) * q + qsb * (c4 * clt + c9 * cnt)
 
     # navigation
@@ -185,19 +161,5 @@ def subf16_model(x, u, model, adjust_cy=True):
     xd[9] = u * s1 + v * s3 + w * s6 # north speed
     xd[10] = u * s2 + v * s4 + w * s7 # east speed
     xd[11] = u * sth-v * s5-w * s8 # vertical speed
-
-    # outputs
-
-    xa = 15.0                  # sets distance normal accel is in front of the c.g. (xa = 15.0 at pilot)
-    az = az-xa * xd[7]         # moves normal accel in front of c.g.
-
-    ####################################
-    ###### peter additions below ######
-    if adjust_cy:
-        ay = ay+xa*xd[8]           # moves side accel in front of c.g.
-
-    # For extraction of Nz
-    Nz = (-az / g) - 1 # zeroed at 1 g, positive g = pulling up
-    Ny = ay / g
 
     return xd

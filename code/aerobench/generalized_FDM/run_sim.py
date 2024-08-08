@@ -3,28 +3,24 @@ import time
 import numpy as np
 from numpy import deg2rad
 import matplotlib.pyplot as plt
+import xml.etree.ElementTree as ET
 from mpl_toolkits.mplot3d import Axes3D, art3d
 import pygame
 import asyncio
 
 import sys
 import os
+path = os.path.abspath(os.path.join(os.path.dirname(__file__)))
+sys.path.append(path)
+os.chdir(path)
 import copy
-from scipy.io import loadmat
 from simple_pid import PID
-
-# Add the aerobench directory to the Python path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..')))
-
-from aerobench.visualize import plot
-
-from waypoint_autopilot import WaypointAutopilot
 from scipy.integrate import RK45
 
-from aerobench.highlevel.controlled_f16 import controlled_f16
-from aerobench.util import get_state_names, Euler, StateIndex
+from fdm_config import fdm_config
+from util import get_state_names, Euler, StateIndex
 
-model_str = 'morelli'
+model_str = 'morelli_f16'
 integrator_str = 'euler'
 v2_integrators = True
 
@@ -34,10 +30,12 @@ def make_der_func(model_str, v2_integrators):
 
     def der_func(t, full_state):
         'derivative function, generalized for multiple aircraft'
-        # Get joystick inputs
-        u_deg = get_joystick_inputs()
 
-        xd = controlled_f16(full_state, u_deg, model_str, v2_integrators)
+        # Get joystick inputs
+        u_deg = get_joystick_inputs() # TODO: Joystick inputs should be generalised, not directly deflection values
+
+        # Call flight dynamics model config of the desired aircraft
+        xd = fdm_config(full_state, u_deg, model_str, v2_integrators)
         rv = xd
 
         return rv
@@ -63,35 +61,35 @@ def get_joystick_inputs():
 
 
 ### Initial Conditions ###
-power = 5  # engine power level (0-10)
+# TODO: Check if we should give NED inital values or not
+
+# Parse the XML file
+tree = ET.parse('init_cond.xml')
+root = tree.getroot()
+
+power = float(root.find('power').text)  # engine power level (0-10)
 # Default alpha & beta
-alpha = deg2rad(0)  # Trim Angle of Attack (rad)
-beta = 0  # Side slip angle (rad)
+alpha = float(root.find('alpha').text)  # Trim Angle of Attack (rad)
+beta = float(root.find('beta').text)  # Side slip angle (rad)
 
 # Initial Attitude
-alt = 1500  # altitude (ft)
-vt = 400  # initial velocity (ft/sec)
+alt = float(root.find('altitude').text)  # altitude (ft)
+vt = float(root.find('velocity').text)  # initial velocity (ft/sec)
 
-phi = 0  # Roll angle from wings level (rad)
-theta = 0  # Pitch angle from nose level (rad)
-psi = 0  # Yaw angle from North (rad)
+phi = float(root.find('phi').text)  # Roll angle from wings level (rad)
+theta = float(root.find('theta').text)  # Pitch angle from nose level (rad)
+psi = float(root.find('psi').text)  # Yaw angle from North (rad)
 
 
 # Define simulation parameters
 step = 1 / 30  # step time
-tmax = (10) * (1/step)  # simulation time
-tmax_integrator = 0
-runtime = 0
-
 
 # Build Initial Condition Vectors
 # state = [vt, alpha, beta, phi, theta, psi, P, Q, R, pn, pe, h, pow]
 initial_state_f = [vt, alpha, beta, phi, theta, psi, 0, 0, 0, 0, 0, alt, power]
 
 start = time.perf_counter()
-
-initial_state_f = np.array(initial_state_f, dtype=float)
-x0 = initial_state_f
+x0 = np.array(initial_state_f, dtype=float)
 
 # run the numerical simulation
 times = [0]
@@ -115,13 +113,18 @@ pygame.init()
 pygame.joystick.init()
 
 # Assuming there is at least one joystick connected
-joystick = pygame.joystick.Joystick(0)
+try:
+    # To check if joystick connected
+    joystick = pygame.joystick.Joystick(0)
+    print(f"Initialized Joystick: {joystick.get_name()}")
+except:
+    # Code to handle any exception
+    print("No joystick connected.")
+    sys.exit()
+
 joystick.init()
 
-print(f"Initialized Joystick: {joystick.get_name()}")
-
-
-# Printing Part
+# Plotting Part
 # Initialize matplotlib for real-time 3D plotting
 x, y, z = 0, 0, alt  # initial positions
 plt.ion()
