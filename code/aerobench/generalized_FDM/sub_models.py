@@ -26,12 +26,14 @@ outputs aircraft state vector deriative
 
 from math import sin, cos, pi
 
-from atmosphere.adc import adc
-from mass_inertia.mass_inertia import mass_inertia
-from engine.thrust import thrust
-from engine.tgear import tgear
-from engine.pdot import pdot
-from aero.aero import aero
+from adc import adc
+from mass_inertia import mass_inertia
+from thrust import thrust
+from aero import aero
+
+# Constants
+rtod = 57.29578  # rad to degree
+g = 32.17    # gravitational constant (ft/s²)
 
 def sub_models(x, u, model, adjust_cy=True):
     '''output aircraft state vector derivative for a given input
@@ -48,7 +50,7 @@ def sub_models(x, u, model, adjust_cy=True):
 
     # Specific to the aircraft
     geom = mass_inertia(model)
-    xcg = geom['xcg']  # CG position in the X direction, current
+    xcg = geom['xcg']  # CG position in the X direction, current # TODO: It can be modelled dynamically to calculate CG after mass drops.
     s = geom['s']     # Total wing area
     b = geom['b']      # Wing span
     cbar = geom['cbar']  # Wing chord
@@ -66,10 +68,6 @@ def sub_models(x, u, model, adjust_cy=True):
     c8 =  geom['c8']
     c9 =  geom['c9']
 
-    # Constants
-    rtod = 57.29578  # rad to degree
-    g = 32.17    # gravitational constant (ft/s²)
-
     xd = x.copy()
     vt = x[0]
     alpha = x[1]*rtod
@@ -84,12 +82,10 @@ def sub_models(x, u, model, adjust_cy=True):
     power = x[12]
 
     # ----- Air data computer ----- #
-    amach, qbar = adc(vt, alt)
+    amach, qbar = adc(vt, alt)  # Mach number and dynamic pressure
 
     # ----- Engine model ----- #
-    cpow = tgear(thtlc, model)
-    xd[12] = pdot(power, cpow, model)
-    t = thrust(power, alt, amach, model)
+    t, xd[12] = thrust(power, alt, amach, model, thtlc)
 
     # ----- Aero model and damping matrix ----- #
     cxt, cyt, czt, clt, cmt, cnt, d = aero(model, x, u, geom)
@@ -107,38 +103,43 @@ def sub_models(x, u, model, adjust_cy=True):
     clt = clt + b2v * (d[4] * r + d[5] * p)
     cmt = cmt + cq * d[6] + czt * (xcgr-xcg)
     cnt = cnt + b2v * (d[7] * r + d[8] * p)-cyt * (xcgr-xcg) * cbar/b
-    cbta = cos(x[2])
-    u = vt * cos(x[1]) * cbta
+    cos_beta = cos(x[2])
+    u = vt * cos(x[1]) * cos_beta
     v = vt * sin(x[2])
-    w = vt * sin(x[1]) * cbta
-    sth = sin(theta)
-    cth = cos(theta)
-    sph = sin(phi)
-    cph = cos(phi)
-    spsi = sin(psi)
-    cpsi = cos(psi)
+    w = vt * sin(x[1]) * cos_beta
+
+    sin_theta = sin(theta)
+    cos_theta = cos(theta)
+    sin_phi = sin(phi)
+    cos_phi = cos(phi)
+    sin_psi = sin(psi)
+    cos_psi = cos(psi)
+
     qs = qbar * s
     qsb = qs * b
     rmqs = rm * qs
-    gcth = g * cth
-    qsph = q * sph
+
+    gcos_theta = g * cos_theta
+    qsin_phi = q * sin_phi
+
     ay = rmqs * cyt
     az = rmqs * czt
+    ax = rm * (qs * cxt + t)
 
     # force equations
-    udot = r * v-q * w-g * sth + rm * (qs * cxt + t)
-    vdot = p*w - r*u + gcth*sph + ay
-    wdot = q * u-p * v + gcth * cph + az
+    udot = r * v-q * w-g * sin_theta + ax
+    vdot = p*w - r*u + gcos_theta*sin_phi + ay
+    wdot = q * u-p * v + gcos_theta * cos_phi + az
     dum = (u * u + w * w)
 
     xd[0] = (u * udot + v * vdot + w * wdot)/vt
     xd[1] = (u * wdot-w * udot)/dum
-    xd[2] = (vt * vdot-v * xd[0]) * cbta/dum
+    xd[2] = (vt * vdot-v * xd[0]) * cos_beta/dum
 
     # kinematics
-    xd[3] = p + (sth/cth) * (qsph + r * cph)
-    xd[4] = q * cph-r * sph
-    xd[5] = (qsph + r * cph)/cth
+    xd[3] = p + (sin_theta/cos_theta) * (qsin_phi + r * cos_phi)
+    xd[4] = q * cos_phi-r * sin_phi
+    xd[5] = (qsin_phi + r * cos_phi)/cos_theta
 
     # moments
     xd[6] = (c2 * p + c1 * r + c4 * he) * q + qsb * (c3 * clt + c4 * cnt)
@@ -147,19 +148,19 @@ def sub_models(x, u, model, adjust_cy=True):
     xd[8] = (c8 * p-c2 * r + c9 * he) * q + qsb * (c4 * clt + c9 * cnt)
 
     # navigation
-    t1 = sph * cpsi
-    t2 = cph * sth
-    t3 = sph * spsi
-    s1 = cth * cpsi
-    s2 = cth * spsi
-    s3 = t1 * sth-cph * spsi
-    s4 = t3 * sth + cph * cpsi
-    s5 = sph * cth
-    s6 = t2 * cpsi + t3
-    s7 = t2 * spsi-t1
-    s8 = cph * cth
+    t1 = sin_phi * cos_psi
+    t2 = cos_phi * sin_theta
+    t3 = sin_phi * sin_psi
+    s1 = cos_theta * cos_psi
+    s2 = cos_theta * sin_psi
+    s3 = t1 * sin_theta - cos_phi * sin_psi
+    s4 = t3 * sin_theta + cos_phi * cos_psi
+    s5 = sin_phi * cos_theta
+    s6 = t2 * cos_psi + t3
+    s7 = t2 * sin_psi-t1
+    s8 = cos_phi * cos_theta
     xd[9] = u * s1 + v * s3 + w * s6 # north speed
     xd[10] = u * s2 + v * s4 + w * s7 # east speed
-    xd[11] = u * sth-v * s5-w * s8 # vertical speed
+    xd[11] = u * sin_theta-v * s5-w * s8 # vertical speed
 
     return xd

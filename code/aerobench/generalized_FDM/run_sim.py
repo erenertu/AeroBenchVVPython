@@ -42,7 +42,7 @@ def make_der_func(model_str, v2_integrators):
 
     return der_func
 
-def get_joystick_inputs():
+def tget_joystick_inputs():
     pygame.event.pump()  # Process event queue
 
     # Get joystick axes (example for 4 axes)
