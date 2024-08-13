@@ -28,7 +28,7 @@ from math import sin, cos, pi
 
 from adc import adc
 from mass_inertia import mass_inertia
-from thrust import thrust
+from engine import engine
 from aero import aero
 
 # Constants
@@ -85,7 +85,7 @@ def sub_models(x, u, model, adjust_cy=True):
     amach, qbar = adc(vt, alt)  # Mach number and dynamic pressure
 
     # ----- Engine model ----- #
-    t, xd[12] = thrust(power, alt, amach, model, thtlc)
+    t, xd[12] = engine(power, alt, amach, model, thtlc)
 
     # ----- Aero model and damping matrix ----- #
     cxt, cyt, czt, clt, cmt, cnt, d = aero(model, x, u, geom)
