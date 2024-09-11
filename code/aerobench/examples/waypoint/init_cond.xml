@@ -1,0 +1,18 @@
+<?xml version="1.0"?>
+<initialize name="basic_ic">
+  <!--
+    Basic set of initial conditions at 3000 m with engines running.
+  -->
+  <ubody unit="M/SEC">    40  </ubody> 
+  <vbody unit="M/SEC">    0.0  </vbody>
+  <wbody unit="M/SEC">    0.0  </wbody>
+  <latitude unit="DEG">    34.690260  </latitude>
+  <longitude unit="DEG">   18.119440  </longitude> <!-- Munich -->
+  <phi unit="DEG">         10.0  </phi>
+  <theta unit="DEG">       30.0  </theta>
+  <psi unit="DEG">         60.0  </psi>
+  <altitude unit="M">      1650 </altitude>
+  <running>               -1 </running> <!-- starts all engines -->
+</initialize>
+
+<!-- 34.870556, 18.119440 -->

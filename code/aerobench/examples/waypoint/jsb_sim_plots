@@ -1,0 +1,143 @@
+import os  # noqa: I001
+import time
+import math
+import sys
+import copy
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import jsbsim
+from jsbsim import FGFDMExec
+
+tmax = 60
+FT_TO_M = 0.3048
+
+# Modify run_jsbsim_simulation to include the new parameters
+def run_jsbsim_simulation():
+    IC_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "init_cond.xml")
+    ROOT_DIR = os.path.dirname(jsbsim.__file__)
+
+    # Initial config
+    aircraft_name = "c172p"
+    sim_freq_hz = 200
+
+    sim = FGFDMExec(root_dir=ROOT_DIR)
+    sim.load_ic(IC_PATH, False)
+    sim.load_model(aircraft_name)
+    sim.set_dt(1 / sim_freq_hz)
+
+    success = sim.run_ic()
+    if not success:
+        raise RuntimeError("JSBSim failed to init simulation conditions.")
+
+    data = []
+    comp_time = []
+    runtime = 0
+
+    while runtime < tmax:
+        loop_start_time = time.perf_counter_ns()
+        sim["fcs/throttle-cmd-norm"] = float(0.1)
+        sim.run()
+
+        # Get the required outputs and add the new parameters
+        outputs = [
+            sim["aero/alpha-deg"],
+            sim["aero/beta-deg"],
+            sim["velocities/vg-fps"] * FT_TO_M,
+            sim["velocities/q-rad_sec"] * 180 / math.pi,
+            sim["velocities/p-rad_sec"] * 180 / math.pi,
+            sim["velocities/r-rad_sec"] * 180 / math.pi,
+            sim["attitude/phi-rad"] * 180 / math.pi,   # Roll (Phi) in degrees
+            sim["attitude/pitch-rad"] * 180 / math.pi, # Pitch in degrees
+            sim["attitude/psi-rad"] * 180 / math.pi    # Yaw (Psi) in degrees
+        ]
+        data.append(outputs)
+
+        runtime += 1/sim_freq_hz
+        fps_recorder = (time.perf_counter_ns() - loop_start_time)
+        comp_time.append(fps_recorder)
+
+    return np.arange(0, tmax, 1/200), data, comp_time
+
+
+# Run the simulation
+time_jsbsim, data_jsbsim, comp_time_jsbsim = run_jsbsim_simulation()
+data_jsbsim = np.array(data_jsbsim)
+
+# Check for NaN values in each parameter
+parameters = ['Alpha', 'Beta', 'Airspeed', 'Pitch Rate (q)', 'Roll Rate (p)', 'Yaw Rate (r)', 'Roll (Phi)', 'Pitch (Theta)', 'Yaw (Psi)']
+for i, param in enumerate(parameters):
+    nan_count = np.isnan(data_jsbsim[:, i]).sum()
+    if nan_count > 0:
+        print(f"{param} has {nan_count} NaN values.")
+    else:
+        print(f"{param} has no NaN values.")
+
+# Adjust the plot to 3 columns (3x3 grid)
+fig, axs = plt.subplots(3, 3, figsize=(20, 10))
+
+# Plot Alpha
+axs[0, 0].plot(time_jsbsim, data_jsbsim[:, 0], label='JSBSim Alpha', color='green')
+axs[0, 0].set_title('Alpha Comparison')
+axs[0, 0].set_xlabel('Time (s)')
+axs[0, 0].set_ylabel('Alpha (deg)')
+axs[0, 0].legend()
+
+# Plot Beta
+axs[0, 1].plot(time_jsbsim, data_jsbsim[:, 1], label='JSBSim Beta', color='green')
+axs[0, 1].set_title('Beta Comparison')
+axs[0, 1].set_xlabel('Time (s)')
+axs[0, 1].set_ylabel('Beta (deg)')
+axs[0, 1].legend()
+
+# Plot Airspeed
+axs[0, 2].plot(time_jsbsim, data_jsbsim[:, 2], label='JSBSim Airspeed', color='green')
+axs[0, 2].set_title('Airspeed Comparison')
+axs[0, 2].set_xlabel('Time (s)')
+axs[0, 2].set_ylabel('Airspeed (m/s)')
+axs[0, 2].legend()
+
+# Plot Pitch Rate (q)
+axs[1, 0].plot(time_jsbsim, data_jsbsim[:, 3], label='JSBSim Pitch Rate (q)', color='green')
+axs[1, 0].set_title('Pitch Rate (q) Comparison')
+axs[1, 0].set_xlabel('Time (s)')
+axs[1, 0].set_ylabel('q (deg/s)')
+axs[1, 0].legend()
+
+# Plot Roll Rate (p)
+axs[1, 1].plot(time_jsbsim, data_jsbsim[:, 4], label='JSBSim Roll Rate (p)', color='green')
+axs[1, 1].set_title('Roll Rate (p) Comparison')
+axs[1, 1].set_xlabel('Time (s)')
+axs[1, 1].set_ylabel('p (deg/s)')
+axs[1, 1].legend()
+
+# Plot Yaw Rate (r)
+axs[1, 2].plot(time_jsbsim, data_jsbsim[:, 5], label='JSBSim Yaw Rate (r)', color='green')
+axs[1, 2].set_title('Yaw Rate (r) Comparison')
+axs[1, 2].set_xlabel('Time (s)')
+axs[1, 2].set_ylabel('r (deg/s)')
+axs[1, 2].legend()
+
+# Plot Roll (Phi)
+axs[2, 0].plot(time_jsbsim, data_jsbsim[:, 6], label='JSBSim Roll (Phi)', color='blue')
+axs[2, 0].set_title('Roll (Phi) Comparison')
+axs[2, 0].set_xlabel('Time (s)')
+axs[2, 0].set_ylabel('Roll (deg)')
+axs[2, 0].legend()
+
+# Plot Pitch
+axs[2, 1].plot(time_jsbsim, data_jsbsim[:, 7], label='JSBSim Pitch', color='blue')
+axs[2, 1].set_title('Pitch Comparison')
+axs[2, 1].set_xlabel('Time (s)')
+axs[2, 1].set_ylabel('Pitch (deg)')
+axs[2, 1].legend()
+
+# Plot Yaw (Psi)
+axs[2, 2].plot(time_jsbsim, data_jsbsim[:, 8], label='JSBSim Yaw (Psi)', color='blue')
+axs[2, 2].set_title('Yaw (Psi) Comparison')
+axs[2, 2].set_xlabel('Time (s)')
+axs[2, 2].set_ylabel('Yaw (deg)')
+axs[2, 2].legend()
+
+plt.tight_layout()
+plt.show()
